@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+	<meta charset='utf-8'>
+	<meta content='width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0' name='viewport'>
+
+	<title>DI Investor Sentiment Index</title>
+
+	<script src='js/d3.js' type='text/javascript'></script>
+	<script src='js/d3.tip.js' type='text/javascript'></script>
+	<script src='js/crossfilter.js' type='text/javascript'></script>
+	<script src='js/reductio.js' type='text/javascript'></script>
+	<script src='js/dc.js' type='text/javascript'></script>
+	<script src="https://d3js.org/d3-array.v1.min.js"></script>
+	<script src="https://d3js.org/d3-collection.v1.min.js"></script>
+	<script src="https://d3js.org/d3-color.v1.min.js"></script>
+	<script src="https://d3js.org/d3-format.v1.min.js"></script>
+	<script src="https://d3js.org/d3-interpolate.v1.min.js"></script>
+	<script src="https://d3js.org/d3-time.v1.min.js"></script>
+	<script src="https://d3js.org/d3-time-format.v2.min.js"></script>
+	<script src="https://d3js.org/d3-scale.v2.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+
+	<link href='css/dc.css' rel='stylesheet' type='text/css'>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.17.1/moment.min.js"></script>
+	<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+</head>
+<body>
+	<div class='pie-graph span6' id='dc-waterfall-chart'></div>
+<script>
+	var waterfallChart = dc.barChart("#dc-waterfall-chart");
+	var original_data = [];
+	var dummy_data = [];
+	
+	//creating example data - could easily be any data reading process from sources like CSV or JSON
+	original_data.push({item: "x0", value: 10});
+	original_data.push({item: "x1", value: 2});
+	original_data.push({item: "x2", value: -1});
+	original_data.push({item: "x3", value: -3});
+	original_data.push({item: "x4", value: 8});
+	
+	//creating the dummy data, the invisible columns supporting the waterfall chart. 
+	//This is going to be the first stack whereas the real data (original_data) is the 
+	//second stack
+	dummy_data.push({item: "x0", value: 0});
+	dummy_data.push({item: "x1", value: 10});
+	dummy_data.push({item: "x2", value: 12});
+	dummy_data.push({item: "x3", value: 11});
+	dummy_data.push({item: "x4", value: 0});
+
+	//creating crossfilter based off of the real data. Again, you can have your own crossfilter creation process here.
+	var ndx = crossfilter(original_data);
+	var itemDimension = ndx.dimension(function (d) { return d.item; });
+	var reducerValue = reductio().count(true).sum(function(d) { return d.value; }).avg(true); 
+	var itemGroup = itemDimension.group();
+	var grp = reducerValue(itemGroup);
+
+	// we should also have a similar cross filter on the dummy data
+	var ndx_dummy = crossfilter(dummy_data);
+	var itemDimension_dummy = ndx_dummy.dimension(function (d) { return d.item; });
+	var reducerValue_dummy = reductio().count(true).sum(function(d) { return d.value; }).avg(true); 
+	var itemGroup_dummy = itemDimension_dummy.group();
+	var dummy_grp = reducerValue_dummy(itemGroup_dummy);
+
+	waterfallChart.width(600)
+	.height(400)
+	.margins({top: 5, right: 40, bottom: 80, left: 40})
+	.dimension(itemDimension)
+	.group(dummy_grp)
+	.valueAccessor(function (d) {	// specific to reductio
+		return d.value.sum; 
+		})
+	.title(function(d){ 
+		return (d.key + "  (" + d.value.sum+ ")" );
+	})
+	.transitionDuration(1000)
+	.centerBar(false)	
+	.gap(7)                    
+	.x(d3.scaleBand())
+	.xUnits(dc.units.ordinal)
+    .controlsUseVisibility(true)
+    .addFilterHandler(function(filters, filter) {return [filter];})
+	.elasticY(true)
+	.xAxis().tickFormat(function(v) {return v;});
+
+	waterfallChart.stack(grp,"x")
+
+	waterfallChart.on("pretransition",function (chart) {
+		//coloring the bars
+		chart.selectAll("rect.bar").style("fill", function(d){return "white";});
+		chart.selectAll("rect.bar").style("stroke", "#ccc");//change the color to white if you want a clean waterfall without dashed boundaries
+		chart.selectAll("rect.bar").style("stroke-dasharray", "1,0,2,0,1");
+		
+		// stack._1 is your real data, whereas stack._0 is the dummy data. You want to treat the styling of these stacks differently
+		chart.selectAll("svg g g.chart-body g.stack._1 rect.bar").style("fill", function(d){console.log(d.data.value.sum);if (d.data.value.sum >0) return '#ff7c19'; else return '#7c7c7c';});
+		chart.selectAll("svg g g.chart-body g.stack._1 rect.bar").style("stroke", "white");
+		chart.selectAll("svg g g.chart-body g.stack._1 rect.bar").style("stroke-dasharray", "1");
+		// chose the color of deselected bars, but only for the real data.
+		chart.selectAll("svg g g.chart-body g.stack._1 rect.deselected").style("fill", function (d) {return '#ccc';});
+		chart.selectAll('g.x text').style('fill', '#8e8e8e');
+		chart.selectAll('g.y text').style('fill', '#777777');
+		chart.selectAll('g.x text').style('font-size', '10.5px');
+		chart.selectAll('g.y.axis g.tick line').style("stroke", "#f46542");
+		chart.selectAll('.domain').style("stroke","#c6c6c6");
+		chart.selectAll('rect.bar').on("contextmenu",function(d){d3.event.preventDefault();});
+	});
+	dc.renderAll();
+</script>
+</body>
+</html>
